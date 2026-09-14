@@ -154,9 +154,9 @@ PlasmoidItem {
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
         onClicked: mouse => {
             if (mouse.button === Qt.MiddleButton) {
-                root.cycle();
-            } else {
                 root.expanded = !root.expanded;
+            } else {
+                root.cycle();
             }
         }
         onWheel: wheel => {

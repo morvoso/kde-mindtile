@@ -114,8 +114,8 @@ Plasma. Either rebind them yourself, or run `tools/claim-keys.sh` from a clone.
 
 The widget shows the layout icon for the current desktop.
 
-- Left click opens a list of the three layouts.
-- Middle click or scrolling moves to the next layout.
+- Left click or scrolling moves to the next layout.
+- Middle click opens a list of the three layouts.
 - Right click shows the layouts as menu entries.
 - The icon is dimmed when the KWin script isn't running.
 
