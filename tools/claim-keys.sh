@@ -1,5 +1,5 @@
 #!/bin/bash
-# Gives MindTile the MindOS keys that Plasma binds to its own actions by
+# Gives MindTile the keys that Plasma binds to its own actions by
 # default (Meta+T, Meta+arrows, Meta+Shift+Left/Right), or gives them back.
 #
 #   tools/claim-keys.sh            take the keys for MindTile
@@ -56,5 +56,5 @@ else
     fi
     for entry in "${plasma[@]}"; do IFS='|' read -r name text key <<<"$entry"; set_keys kwin "$name" "$text" none; done
     for entry in "${mindtile[@]}"; do IFS='|' read -r name text key <<<"$entry"; set_keys kwin "$name" "$text" "$key"; done
-    echo "MindTile has the MindOS keys. Undo with: $0 --release"
+    echo "MindTile has its keys. Undo with: $0 --release"
 fi

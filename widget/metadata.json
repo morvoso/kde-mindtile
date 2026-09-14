@@ -11,10 +11,10 @@
         "Description": "Shows and switches the MindTile window layout of the current desktop",
         "Icon": "view-grid",
         "Id": "com.github.morvoso.mindtile",
+        "License": "MIT",
         "Name": "MindTile",
         "Version": "0.1.0",
-        "Website": "https://github.com/morvoso/kde-mindtile",
-        "License": "MIT"
+        "Website": "https://github.com/morvoso/kde-mindtile"
     },
     "X-Plasma-API-Minimum-Version": "6.0",
     "X-Plasma-NotificationArea": "true",

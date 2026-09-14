@@ -7,6 +7,7 @@ load() {
     qdbus6 org.kde.KWin /Scripting/Script$id org.kde.kwin.Script.run
 }
 shot() { spectacle -b -n -f -o "$MT_OUT/$1.png" >/dev/null 2>&1; sleep 1.5; }
+mti() { "$MT_ROOT/build/tools/mtinput" "$@"; }
 dump() { echo "== $1" >&2; kg "Probe: dump" 0.3; }
 sleep 2
 load "$MT_ROOT/tests/probe/contents/ui/main.qml" probe

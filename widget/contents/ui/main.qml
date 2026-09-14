@@ -76,6 +76,28 @@ PlasmoidItem {
         refreshSoon.restart();
     }
 
+    /// Hand the gaps and border to the KWin script: it reads them from
+    /// mindtilerc when "MindTile: Reload settings" is invoked.
+    function pushStyle() {
+        const c = Plasmoid.configuration;
+        const style = {
+            gap: c.gap,
+            outerGap: c.outerGap,
+            border: c.border,
+            borderWidth: c.borderWidth,
+            borderColor: c.useAccentColor ? "" : String(c.borderColor),
+        };
+        state.setValue("style", JSON.stringify(style));
+        state.sync();
+        DBus.SessionBus.asyncCall({
+            service: "org.kde.kglobalaccel",
+            path: "/component/kwin",
+            iface: "org.kde.kglobalaccel.Component",
+            member: "invokeShortcut",
+            arguments: [new DBus.string("MindTile: Reload settings")],
+        });
+    }
+
     function cycle() {
         const i = layouts.findIndex(l => l.mode === mode);
         switchTo(layouts[(i + 1) % layouts.length]);
@@ -106,6 +128,18 @@ PlasmoidItem {
         running: true
         repeat: true
         onTriggered: root.refresh()
+    }
+
+    Connections {
+        target: Plasmoid.configuration
+        function onValueChanged() { styleSoon.restart(); }
+    }
+
+    // One push for a whole Apply, which changes several keys at once.
+    Timer {
+        id: styleSoon
+        interval: 200
+        onTriggered: root.pushStyle()
     }
 
     Timer {

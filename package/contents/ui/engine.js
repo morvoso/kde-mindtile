@@ -16,8 +16,14 @@ var SPLIT_WIDTHS = [1 / 3, 1 / 2, 2 / 3];
 var FLOAT_SIZES = [0.5, 0.7, 0.9];
 var DEFAULT_COLUMN_WIDTH = 0.5;
 var MIN_TILE = 120;
-/// How long the columns strip takes to slide to a newly focused column.
-var SCROLL_MS = 260;
+/// The columns strip slides on a critically damped spring, like niri's
+/// default view movement (stiffness 800): a new target mid-slide keeps the
+/// speed the strip already has instead of starting again from rest.
+var SPRING_OMEGA = Math.sqrt(800);
+/// Meta+wheel moves the focus at most once in this many milliseconds, so a
+/// touchpad or a free-spinning wheel steps one column at a time (niri's
+/// cooldown-ms=150).
+var WHEEL_COOLDOWN_MS = 150;
 /// KWin's ClientAreaOption::MaximizeArea (the enum is not exposed to QML).
 var MAXIMIZE_AREA = 2;
 
@@ -166,11 +172,23 @@ function scrollToShow(areaW, widths, gap, scroll, focused) {
     return clamp(scroll, 0, total - areaW);
 }
 
-/// The strip position of a slide in flight: eases out from `from` to `to`.
-function animValue(anim, now) {
-    var t = clamp((now - anim.start) / SCROLL_MS, 0, 1);
-    var eased = 1 - Math.pow(1 - t, 3);
-    return anim.from + Math.round((anim.to - anim.from) * eased);
+/// Where a slide is at `now`, and how fast it moves (pixels per second).
+/// `anim` is {from, vel, to, start}: the position and speed it had when the
+/// target last changed.
+function springAt(anim, now) {
+    var t = Math.max(now - anim.start, 0) / 1000;
+    var x0 = anim.from - anim.to;
+    var w = SPRING_OMEGA;
+    var e = Math.exp(-w * t);
+    return {
+        pos: anim.to + (x0 + (anim.vel + w * x0) * t) * e,
+        vel: (anim.vel - w * (anim.vel + w * x0) * t) * e,
+    };
+}
+
+/// A slide is over once it is within half a pixel and nearly still.
+function springDone(state, to) {
+    return Math.abs(state.pos - to) < 0.5 && Math.abs(state.vel) < 20;
 }
 
 /// The nearest candidate in `dir` from `from`, judged by rectangle centres.
@@ -245,6 +263,7 @@ function snapRect(area, zone) {
 function createEngine(api, config, modes, memory) {
     var gap = clamp(config.gap, 0, 64);
     var outerGap = clamp(config.outerGap, 0, 64);
+    var lastWheel = -Infinity;
     var defaultMode = parseMode(config.defaultMode) || "floating";
     var floatingApps = (config.floatingApps || []).map(function (s) { return s.toLowerCase(); });
     modes = modes || {};
@@ -333,8 +352,10 @@ function createEngine(api, config, modes, memory) {
     }
 
     /// A window the layout looks after at all: an application's own window.
+    /// KWin's own windows (the focus border, on-screen displays) have no
+    /// process and are never laid out.
     function relevant(w) {
-        return w && !w.deleted && w.normalWindow && !w.specialWindow && !w.popupWindow;
+        return w && !w.deleted && w.normalWindow && !w.specialWindow && !w.popupWindow && w.pid !== -1;
     }
 
     function onCurrentDesktop(w) {
@@ -660,18 +681,21 @@ function createEngine(api, config, modes, memory) {
                 var target = scrollToShow(inner.width, widths, gap, t.scroll, focusedIdx);
                 var now = api.now();
                 if (target !== t.scroll) {
-                    // Slide from wherever the strip is right now.
-                    var from = t.anim ? animValue(t.anim, now) : t.scroll;
-                    t.anim = config.animate && from !== target ? { from: from, to: target, start: now } : null;
+                    // Slide from wherever the strip is right now, at the speed
+                    // it already has.
+                    var cur = t.anim ? springAt(t.anim, now) : { pos: t.scroll, vel: 0 };
+                    t.anim = config.animate && Math.abs(cur.pos - target) >= 1
+                        ? { from: cur.pos, vel: cur.vel, to: target, start: now } : null;
                     t.scroll = target;
                 }
                 var visual = t.scroll;
                 if (t.anim) {
-                    if (now - t.anim.start < SCROLL_MS) {
-                        visual = animValue(t.anim, now);
-                        animating = true;
-                    } else {
+                    var state = springAt(t.anim, now);
+                    if (springDone(state, t.anim.to)) {
                         t.anim = null;
+                    } else {
+                        visual = Math.round(state.pos);
+                        animating = true;
                     }
                 }
                 rects = columnRects(inner, widths, gap, visual);
@@ -843,9 +867,10 @@ function createEngine(api, config, modes, memory) {
         }
     }
 
-    /// Step through the windows in the layout order, wrapping round at the
-    /// ends (in columns that walks the strip left and right).
-    function focusStep(forward) {
+    /// Step through the windows in the layout order (in columns that walks
+    /// the strip left and right). The keys wrap round at the ends; the wheel
+    /// stops there, as niri does.
+    function focusStep(forward, noWrap) {
         if (!isTiling(mode())) {
             return;
         }
@@ -869,11 +894,33 @@ function createEngine(api, config, modes, memory) {
         var i = focused ? order.indexOf(focused) : -1;
         var next;
         if (i >= 0) {
-            next = forward ? (i + 1) % order.length : (i + order.length - 1) % order.length;
+            next = forward ? i + 1 : i - 1;
+            if (noWrap && (next < 0 || next >= order.length)) {
+                return;
+            }
+            next = (next + order.length) % order.length;
         } else {
             next = forward ? 0 : order.length - 1;
         }
         api.activate(order[next]);
+        schedule();
+    }
+
+    /// Meta+wheel: the next or previous window in the layout, one step per
+    /// cooldown.
+    function wheelFocus(forward) {
+        var now = api.now();
+        if (!isTiling(mode()) || now - lastWheel < WHEEL_COOLDOWN_MS) {
+            return;
+        }
+        lastWheel = now;
+        focusStep(forward, true);
+    }
+
+    /// New gaps from the settings; the layout follows straight away.
+    function setGaps(inner, outer) {
+        gap = clamp(Number(inner) || 0, 0, 64);
+        outerGap = clamp(Number(outer) || 0, 0, 64);
         schedule();
     }
 
@@ -1213,6 +1260,8 @@ function createEngine(api, config, modes, memory) {
         cycleSize: cycleSize,
         focusDirection: focusDirection,
         focusStep: focusStep,
+        wheelFocus: wheelFocus,
+        setGaps: setGaps,
         moveDirection: moveDirection,
         windowAdded: windowAdded,
         windowRemoved: windowRemoved,

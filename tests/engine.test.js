@@ -36,6 +36,7 @@ function workspace(outputs, config, memory) {
         cursor: { x: 0, y: 0 },
         desktop: "d1",
         saved: null,
+        time: 0,
         osd: [],
         outputs: outputs || [{ name: "A", geometry: rect(0, 0, 1920, 1080) }],
     };
@@ -60,7 +61,7 @@ function workspace(outputs, config, memory) {
         saveMemory: (m) => { ws.memory = JSON.parse(JSON.stringify(m)); },
         schedule: () => {},
         animate: () => {},
-        now: () => 0,
+        now: () => ws.time,
     };
     ws.engine = E.createEngine(ws.api, Object.assign({ gap: 8, outerGap: 0, defaultMode: "floating", animate: false }, config), {}, memory);
     ws.open = (geometry, extra) => {
@@ -378,4 +379,92 @@ test("the window memory survives a reload of the script", () => {
     again.engine.arrange();
     assert.deepEqual(plain(a.frameGeometry), rect(100, 100, 500, 400));
     assert.deepEqual(plain(b.frameGeometry), rect(700, 200, 600, 500));
+});
+
+test("the strip slides on a spring and keeps its speed when the target changes", () => {
+    const anim = { from: 0, vel: 0, to: 1000, start: 0 };
+    const mid = E.springAt(anim, 50);
+    assert.ok(mid.pos > 0 && mid.pos < 1000 && mid.vel > 0, JSON.stringify(mid));
+    assert.ok(E.springDone(E.springAt(anim, 600), 1000));
+    // No overshoot: critically damped.
+    for (let t = 0; t <= 600; t += 10) {
+        assert.ok(E.springAt(anim, t).pos <= 1000.001);
+    }
+
+    const ws = workspace(undefined, { animate: true });
+    ws.engine.setMode("columns");
+    const a = ws.open(rect(0, 0, 500, 500));
+    ws.open(rect(0, 0, 500, 500));
+    const c = ws.open(rect(0, 0, 500, 500));
+    ws.time = 1000;
+    ws.engine.arrange();
+    assert.equal(c.frameGeometry.x, 964);
+    // Focus a: the strip starts sliding back.
+    ws.active = a;
+    ws.time = 1000;
+    ws.engine.arrange();
+    ws.time = 1060;
+    assert.ok(ws.engine.arrange(), "still sliding");
+    const partway = a.frameGeometry.x;
+    assert.ok(partway > -964 && partway < 0, String(partway));
+    // Back to c mid-slide: the strip turns round from where it is, without a jump.
+    ws.active = c;
+    ws.engine.arrange();
+    assert.equal(a.frameGeometry.x, partway);
+    ws.time = 3000;
+    assert.equal(ws.engine.arrange(), false);
+    assert.equal(c.frameGeometry.x, 964);
+});
+
+test("the wheel steps the focus along the layout, stops at the ends and has a cooldown", () => {
+    const ws = workspace();
+    ws.engine.setMode("columns");
+    const a = ws.open(rect(0, 0, 500, 500));
+    const b = ws.open(rect(0, 0, 500, 500));
+    const c = ws.open(rect(0, 0, 500, 500));
+    ws.time = 1000;
+    ws.engine.wheelFocus(true); // at the end already: stays on c
+    assert.equal(ws.active, c);
+    ws.time += 200;
+    ws.engine.wheelFocus(false);
+    assert.equal(ws.active, b);
+    ws.time += 50; // inside the cooldown
+    ws.engine.wheelFocus(false);
+    assert.equal(ws.active, b);
+    ws.time += 200;
+    ws.engine.wheelFocus(false);
+    assert.equal(ws.active, a);
+    ws.time += 200;
+    ws.engine.wheelFocus(false);
+    assert.equal(ws.active, a);
+    // Floating ignores the wheel.
+    ws.engine.setMode("floating");
+    ws.time += 200;
+    ws.engine.wheelFocus(true);
+    assert.equal(ws.active, a);
+});
+
+test("gaps change while running", () => {
+    const ws = workspace();
+    ws.engine.setMode("dwindle");
+    const a = ws.open(rect(0, 0, 500, 500));
+    const b = ws.open(rect(0, 0, 500, 500));
+    assert.equal(b.frameGeometry.x, 964);
+    ws.engine.setGaps(20, 30);
+    ws.engine.arrange();
+    assert.deepEqual(plain(a.frameGeometry), rect(30, 30, 920, 1020));
+    assert.equal(b.frameGeometry.x, 970);
+});
+
+test("KWin's own windows are never laid out or focused", () => {
+    const ws = workspace();
+    ws.engine.setMode("dwindle");
+    const a = ws.open(rect(0, 0, 500, 500));
+    const ring = ws.open(rect(10, 10, 100, 100), { pid: -1, moveable: false, onAllDesktops: true, desktops: [] });
+    ws.active = a;
+    ws.engine.arrange();
+    assert.deepEqual(plain(ring.frameGeometry), rect(10, 10, 100, 100));
+    assert.deepEqual(plain(a.frameGeometry), rect(0, 0, 1920, 1080));
+    ws.engine.focusDirection("right");
+    assert.equal(ws.active, a);
 });

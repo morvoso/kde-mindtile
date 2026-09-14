@@ -8,12 +8,13 @@
             }
         ],
         "Category": "Window Management",
-        "Description": "The MindOS window layouts for KWin: Floating, Tiles and Columns, and windows that go back where they were",
+        "Description": "Floating, dwindle tiling and scrolling columns per virtual desktop. Tiled windows go back to their floating size and position.",
         "Icon": "preferences-system-windows-effect-flipswitch",
         "Id": "mindtile",
+        "License": "MIT",
         "Name": "MindTile",
         "Version": "0.1.0",
-        "License": "MIT"
+        "Website": "https://github.com/morvoso/kde-mindtile"
     },
     "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
     "X-Plasma-API": "declarativescript",

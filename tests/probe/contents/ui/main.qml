@@ -18,7 +18,7 @@ Item {
                 out.push({ cls: w.resourceClass, caption: w.caption, x: g.x, y: g.y, w: g.width, h: g.height,
                            active: w === Workspace.activeWindow, max: w.maximizeMode });
             }
-            console.warn("PROBE " + JSON.stringify(out));
+            console.warn("PROBE " + JSON.stringify(out) + " cursor=" + Workspace.cursorPos.x + "," + Workspace.cursorPos.y);
         }
     }
     Connections {

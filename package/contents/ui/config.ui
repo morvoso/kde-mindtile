@@ -4,33 +4,11 @@
  <widget class="QWidget" name="MindTileConfig">
   <layout class="QFormLayout" name="form">
    <item row="0" column="0">
-    <widget class="QLabel" name="gapLabel">
-     <property name="text"><string>Gap between tiles:</string></property>
-    </widget>
-   </item>
-   <item row="0" column="1">
-    <widget class="QSpinBox" name="kcfg_Gap">
-     <property name="suffix"><string> px</string></property>
-     <property name="maximum"><number>64</number></property>
-    </widget>
-   </item>
-   <item row="1" column="0">
-    <widget class="QLabel" name="outerGapLabel">
-     <property name="text"><string>Gap at the screen edge:</string></property>
-    </widget>
-   </item>
-   <item row="1" column="1">
-    <widget class="QSpinBox" name="kcfg_OuterGap">
-     <property name="suffix"><string> px</string></property>
-     <property name="maximum"><number>64</number></property>
-    </widget>
-   </item>
-   <item row="2" column="0">
     <widget class="QLabel" name="modeLabel">
      <property name="text"><string>Layout for a new desktop:</string></property>
     </widget>
    </item>
-   <item row="2" column="1">
+   <item row="0" column="1">
     <widget class="QComboBox" name="kcfg_DefaultMode">
      <property name="kcfg_property" stdset="0"><string>currentText</string></property>
      <item><property name="text"><string>floating</string></property></item>
@@ -38,19 +16,25 @@
      <item><property name="text"><string>columns</string></property></item>
     </widget>
    </item>
-   <item row="3" column="1">
+   <item row="1" column="1">
     <widget class="QCheckBox" name="kcfg_Animate">
      <property name="text"><string>Slide the columns strip to the focused window</string></property>
     </widget>
    </item>
-   <item row="4" column="0">
+   <item row="2" column="0">
     <widget class="QLabel" name="appsLabel">
      <property name="text"><string>Apps that always float:</string></property>
     </widget>
    </item>
-   <item row="4" column="1">
+   <item row="2" column="1">
     <widget class="QLineEdit" name="kcfg_FloatingApps">
      <property name="placeholderText"><string>steam, org.kde.kcalc, steam_app_*</string></property>
+    </widget>
+   </item>
+   <item row="3" column="1">
+    <widget class="QLabel" name="styleNote">
+     <property name="text"><string>Gaps and the focus border are set in the MindTile panel widget: right click it, then Configure MindTile.</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
     </widget>
    </item>
   </layout>

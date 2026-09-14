@@ -4,8 +4,6 @@
       xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
   <kcfgfile name=""/>
   <group name="">
-    <entry name="Gap" type="Int"><default>8</default></entry>
-    <entry name="OuterGap" type="Int"><default>8</default></entry>
     <entry name="DefaultMode" type="String"><default>floating</default></entry>
     <entry name="Animate" type="Bool"><default>true</default></entry>
     <entry name="FloatingApps" type="String"><default></default></entry>

@@ -6,25 +6,32 @@
 # Options (with curl, pass them as: ... | bash -s -- --no-keys):
 #   --no-keys     leave Plasma's Meta+T, Meta+arrows and Meta+Shift+Left/Right alone
 #   --no-tray     install the widget but don't add it to the system tray
+#   --no-wheel    don't build the Meta+wheel effect
 #   --uninstall   remove the script and the widget, give Plasma its keys back
 #
-# Everything goes into ~/.local/share. No root needed.
+# Everything goes into ~/.local and ~/.config. No root needed.
 set -euo pipefail
 
 REPO="morvoso/kde-mindtile"
 BRANCH="main"
 SCRIPT_ID="mindtile"
 WIDGET_ID="com.github.morvoso.mindtile"
+EFFECT_ID="mindtile_wheel"
+PLUGIN_DIR="$HOME/.local/lib/qt6/plugins"
+EFFECT_SO="$PLUGIN_DIR/kwin/effects/plugins/$EFFECT_ID.so"
+ENV_SCRIPT="$HOME/.config/plasma-workspace/env/mindtile.sh"
 
 claim_keys=1
 tray=1
+wheel=1
 uninstall=0
 for arg in "$@"; do
     case "$arg" in
         --no-keys) claim_keys=0 ;;
         --no-tray) tray=0 ;;
+        --no-wheel) wheel=0 ;;
         --uninstall) uninstall=1 ;;
-        -h|--help) sed -n '2,12p' "$0" 2>/dev/null || true; exit 0 ;;
+        -h|--help) sed -n '2,13p' "$0" 2>/dev/null || true; exit 0 ;;
         *) echo "unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -66,6 +73,9 @@ if [ "$uninstall" = 1 ]; then
     fi
     bash "$tools" --release >/dev/null
     tray_items remove >/dev/null
+    qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect "$EFFECT_ID" >/dev/null 2>&1 || true
+    kwriteconfig6 --file kwinrc --group Plugins --key "${EFFECT_ID}Enabled" --delete
+    rm -f "$EFFECT_SO" "$ENV_SCRIPT"
     kwriteconfig6 --file kwinrc --group Plugins --key "${SCRIPT_ID}Enabled" false
     qdbus6 org.kde.KWin /KWin reconfigure
     kpackagetool6 --type KWin/Script --remove "$SCRIPT_ID" >/dev/null 2>&1 || true
@@ -130,6 +140,40 @@ fi
 if [ "$claim_keys" = 1 ]; then
     bash "$here/tools/claim-keys.sh" >/dev/null
     say "MindTile now has Meta+T, Meta+R, Meta+Shift+F, Meta+arrows and Meta+Shift+arrows"
+fi
+
+# Meta+wheel needs a compiled KWin effect. KWin only looks for it in
+# QT_PLUGIN_PATH, which Plasma reads at login.
+if [ "$wheel" = 1 ]; then
+    say "Building the Meta+wheel effect"
+    build=$(mktemp -d)
+    if bash "$here/effect/build.sh" "$build" >"$build/log" 2>&1; then
+        mkdir -p "$(dirname "$EFFECT_SO")" "$(dirname "$ENV_SCRIPT")"
+        # Replace, don't overwrite: KWin may have the old file mapped.
+        install -m 644 "$build/$EFFECT_ID.so" "$EFFECT_SO.new"
+        mv -f "$EFFECT_SO.new" "$EFFECT_SO"
+        cat >"$ENV_SCRIPT" <<ENV
+# Added by the MindTile installer so KWin finds the Meta+wheel effect.
+case ":\${QT_PLUGIN_PATH:-}:" in
+    *":$PLUGIN_DIR:"*) ;;
+    *) export QT_PLUGIN_PATH="$PLUGIN_DIR\${QT_PLUGIN_PATH:+:\$QT_PLUGIN_PATH}" ;;
+esac
+ENV
+        kwriteconfig6 --file kwinrc --group Plugins --key "${EFFECT_ID}Enabled" true
+        if [ "$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded "$EFFECT_ID" 2>/dev/null)" = true ]; then
+            qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect "$EFFECT_ID" >/dev/null 2>&1 || true
+            say "Meta+wheel is ready. Log out and back in to load a rebuilt effect."
+        elif [ "$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect "$EFFECT_ID" 2>/dev/null)" = true ]; then
+            say "Meta+wheel is ready"
+        else
+            say "Meta+wheel works after you log out and back in"
+        fi
+    else
+        say "Skipped Meta+wheel: the effect did not build. It needs g++, pkg-config and the KWin"
+        say "development headers (kwin on Arch, kwin-devel on Fedora, kwin-dev on Debian/Ubuntu)."
+        sed 's/^/    /' "$build/log" | tail -5
+    fi
+    rm -rf "$build"
 fi
 
 say "Done. Every desktop starts in Floating; press Meta+T to switch."

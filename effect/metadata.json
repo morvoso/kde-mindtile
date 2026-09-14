@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "justin.bryson@gmail.com",
+                "Name": "Justin Bryson"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "Meta+mouse wheel moves the focus along the MindTile layout",
+        "EnabledByDefault": false,
+        "Id": "mindtile_wheel",
+        "License": "MIT",
+        "Name": "MindTile wheel focus",
+        "Website": "https://github.com/morvoso/kde-mindtile"
+    },
+    "org.kde.kwin.effect": {
+        "internal": false
+    }
+}
