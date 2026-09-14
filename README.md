@@ -143,8 +143,10 @@ resized always float.
   desktop until it scrolls back.
 - Tiles keep their normal title bars. Apps aren't told they are tiled, so GTK
   windows keep rounded corners and shadows.
-- Saved floating geometry is kept in memory only and is lost when KWin
-  restarts or the script is reloaded. The per-desktop layout is kept.
+- Saved floating geometry is stored in `~/.config/mindtilerc` against KWin's
+  internal window ids. It survives the script being reloaded (for example
+  when you apply its settings), but not a KWin restart or logging out. The
+  per-desktop layout is always kept.
 - A window with a minimum size larger than its tile will overflow the tile.
 
 ## Development

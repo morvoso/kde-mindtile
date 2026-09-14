@@ -233,17 +233,23 @@ function snapRect(area, zone) {
 ///   setMaximized(w, on)
 ///   osd(text)
 ///   saveModes(object)
+///   saveMemory(object)     the window memory, to hand back after a reload
 ///   schedule()             run arrange() on the next event-loop turn
 ///   animate(on)            keep calling arrange() every frame, or stop
 ///   now()                  milliseconds
 /// `config` is {gap, outerGap, defaultMode, animate, floatingApps: [..]} and
-/// `modes` the saved mode of every virtual desktop.
-function createEngine(api, config, modes) {
+/// `modes` the saved mode of every virtual desktop. `memory` is what the last
+/// saveMemory() got: KWin keeps a window's internal id while it runs, so the
+/// floating geometry of the tiles survives a reload of the script (which
+/// System Settings does whenever the script's settings are applied).
+function createEngine(api, config, modes, memory) {
     var gap = clamp(config.gap, 0, 64);
     var outerGap = clamp(config.outerGap, 0, 64);
     var defaultMode = parseMode(config.defaultMode) || "floating";
     var floatingApps = (config.floatingApps || []).map(function (s) { return s.toLowerCase(); });
     modes = modes || {};
+    memory = memory || {};
+    var memorySaved = JSON.stringify(memory);
 
     /// Per-window layout data, by KWin's internal id.
     var windows = {};
@@ -292,6 +298,13 @@ function createEngine(api, config, modes) {
                 snapSaved: null,
                 dragging: null,
             };
+            var kept = memory[id];
+            if (kept) {
+                d.tiledNow = !!kept.tiled;
+                d.untiled = kept.untiled ? copyRect(kept.untiled) : null;
+                d.floating = !!kept.floating;
+                d.width = typeof kept.width === "number" ? kept.width : 0;
+            }
         }
         d.win = w;
         return d;
@@ -560,7 +573,28 @@ function createEngine(api, config, modes) {
             arranging = false;
         }
         api.animate(animating);
+        saveMemory();
         return animating;
+    }
+
+    /// Hand the window memory to the host when it changed. Windows that are
+    /// gone drop out, since only the windows seen since the start are kept.
+    function saveMemory() {
+        if (!api.saveMemory) {
+            return;
+        }
+        var out = {};
+        for (var id in windows) {
+            var d = windows[id];
+            if (d.tiledNow || d.floating || d.width) {
+                out[id] = { tiled: d.tiledNow, untiled: d.untiled, floating: d.floating, width: d.width };
+            }
+        }
+        var text = JSON.stringify(out);
+        if (text !== memorySaved) {
+            memorySaved = text;
+            api.saveMemory(out);
+        }
     }
 
     function arrangeOutput(out, outs, stack) {

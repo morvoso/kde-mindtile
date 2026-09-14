@@ -29,7 +29,7 @@ function win(geometry, extra) {
     }, extra);
 }
 
-function workspace(outputs, config) {
+function workspace(outputs, config, memory) {
     const ws = {
         windows: [],
         active: null,
@@ -57,11 +57,12 @@ function workspace(outputs, config) {
         setMaximized: (w, on) => { w.maximizeMode = on ? 3 : 0; },
         osd: (text) => ws.osd.push(text),
         saveModes: (m) => { ws.saved = JSON.stringify(m); },
+        saveMemory: (m) => { ws.memory = JSON.parse(JSON.stringify(m)); },
         schedule: () => {},
         animate: () => {},
         now: () => 0,
     };
-    ws.engine = E.createEngine(ws.api, Object.assign({ gap: 8, outerGap: 0, defaultMode: "floating", animate: false }, config), {});
+    ws.engine = E.createEngine(ws.api, Object.assign({ gap: 8, outerGap: 0, defaultMode: "floating", animate: false }, config), {}, memory);
     ws.open = (geometry, extra) => {
         const w = win(geometry, extra);
         ws.windows.push(w);
@@ -354,4 +355,27 @@ test("a tile sent to the other screen floats in its old place over there", () =>
     ws.engine.setMode("floating");
     ws.engine.arrange();
     assert.deepEqual(a.frameGeometry, rect(3780, 580, 700, 500));
+});
+
+test("the window memory survives a reload of the script", () => {
+    const ws = workspace();
+    const a = ws.open(rect(100, 100, 500, 400));
+    const b = ws.open(rect(700, 200, 600, 500));
+    ws.engine.setMode("dwindle");
+    ws.engine.arrange();
+    assert.notDeepEqual(plain(a.frameGeometry), rect(100, 100, 500, 400));
+
+    // A new engine over the same windows, still tiled, as after a reload.
+    const again = workspace(undefined, undefined, ws.memory);
+    again.windows = ws.windows;
+    again.active = b;
+    for (const w of again.windows) {
+        again.engine.windowAdded(w, true);
+    }
+    again.engine.setMode("dwindle", true);
+    again.engine.arrange();
+    again.engine.setMode("floating", true);
+    again.engine.arrange();
+    assert.deepEqual(plain(a.frameGeometry), rect(100, 100, 500, 400));
+    assert.deepEqual(plain(b.frameGeometry), rect(700, 200, 600, 500));
 });

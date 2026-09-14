@@ -11,6 +11,10 @@ Item {
     id: root
 
     property var engine: null
+    /// Every signal handler put on a window, so that they can be taken off
+    /// when the script is unloaded. KWin keeps the windows, and a handler
+    /// left on one would call into a script that no longer exists.
+    property var hooks: []
 
     function list(model) {
         var out = [];
@@ -39,6 +43,7 @@ Item {
         location: StandardPaths.writableLocation(StandardPaths.GenericConfigLocation) + "/mindtilerc"
         category: "Layout"
         property string modes: "{}"
+        property string memory: "{}"
     }
 
     DBusCall {
@@ -87,6 +92,7 @@ Item {
             osdCall.call();
         },
         saveModes: function (modes) { store.modes = JSON.stringify(modes); store.sync(); },
+        saveMemory: function (memory) { store.memory = JSON.stringify(memory); store.sync(); },
         schedule: function () { soon.restart(); },
         animate: function (on) {
             if (on && !frame.running) {
@@ -103,15 +109,19 @@ Item {
             return;
         }
         var e = root.engine;
-        w.maximizedAboutToChange.connect(function (mode) { e.maximizing(w, mode); });
-        w.maximizedChanged.connect(e.schedule);
-        w.fullScreenChanged.connect(e.schedule);
-        w.minimizedChanged.connect(e.schedule);
-        w.desktopsChanged.connect(e.schedule);
-        w.activitiesChanged.connect(e.schedule);
-        w.outputChanged.connect(function () { e.windowOutputChanged(w); });
-        w.interactiveMoveResizeStarted.connect(function () { e.dragStarted(w, w.resize); });
-        w.interactiveMoveResizeFinished.connect(function () { e.dragFinished(w); });
+        function hook(signal, fn) {
+            signal.connect(fn);
+            root.hooks.push({ win: w, signal: signal, fn: fn });
+        }
+        hook(w.maximizedAboutToChange, function (mode) { e.maximizing(w, mode); });
+        hook(w.maximizedChanged, e.schedule);
+        hook(w.fullScreenChanged, e.schedule);
+        hook(w.minimizedChanged, e.schedule);
+        hook(w.desktopsChanged, e.schedule);
+        hook(w.activitiesChanged, e.schedule);
+        hook(w.outputChanged, function () { e.windowOutputChanged(w); });
+        hook(w.interactiveMoveResizeStarted, function () { e.dragStarted(w, w.resize); });
+        hook(w.interactiveMoveResizeFinished, function () { e.dragFinished(w); });
         e.windowAdded(w, existing);
     }
 
@@ -123,30 +133,46 @@ Item {
         });
     }
 
-    Component.onCompleted: {
-        var modes = {};
+    function parsed(text) {
         try {
-            modes = JSON.parse(store.modes);
+            return JSON.parse(text) || {};
         } catch (err) {
-            modes = {};
+            return {};
         }
+    }
+
+    Component.onCompleted: {
         root.engine = Engine.createEngine(root.api, {
             gap: KWin.readConfig("Gap", 8),
             outerGap: KWin.readConfig("OuterGap", 8),
             defaultMode: KWin.readConfig("DefaultMode", "floating"),
             animate: KWin.readConfig("Animate", true),
             floatingApps: root.readList("FloatingApps", ""),
-        }, modes);
+        }, root.parsed(store.modes), root.parsed(store.memory));
         var existing = root.list(Workspace.stackingOrder);
         for (var i = 0; i < existing.length; i++) {
             root.watch(existing[i], true);
         }
     }
 
+    Component.onDestruction: {
+        for (var i = 0; i < root.hooks.length; i++) {
+            try {
+                root.hooks[i].signal.disconnect(root.hooks[i].fn);
+            } catch (err) {
+                // the window is already gone
+            }
+        }
+        root.hooks = [];
+    }
+
     Connections {
         target: Workspace
         function onWindowAdded(w) { root.watch(w, false); }
-        function onWindowRemoved(w) { root.engine.windowRemoved(w); }
+        function onWindowRemoved(w) {
+            root.hooks = root.hooks.filter(function (h) { return h.win !== w; });
+            root.engine.windowRemoved(w);
+        }
         function onWindowActivated(w) { root.engine.windowActivated(w); }
         function onCurrentDesktopChanged() { root.engine.schedule(); }
         function onCurrentActivityChanged() { root.engine.schedule(); }
