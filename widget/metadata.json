@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "justin.bryson@gmail.com",
+                "Name": "Justin Bryson"
+            }
+        ],
+        "Category": "Windows and Tasks",
+        "Description": "Shows and switches the MindTile window layout of the current desktop",
+        "Icon": "view-grid",
+        "Id": "com.github.morvoso.mindtile",
+        "Name": "MindTile",
+        "Version": "0.1.0",
+        "Website": "https://github.com/morvoso/kde-mindtile"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-NotificationArea": "true",
+    "X-Plasma-NotificationAreaCategory": "SystemServices"
+}

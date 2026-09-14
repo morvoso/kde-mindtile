@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "justin.bryson@gmail.com",
+                "Name": "Justin Bryson"
+            }
+        ],
+        "Category": "Window Management",
+        "Description": "The MindOS window layouts for KWin: Floating, Tiles and Columns, and windows that go back where they were",
+        "Icon": "preferences-system-windows-effect-flipswitch",
+        "Id": "mindtile",
+        "Name": "MindTile",
+        "Version": "0.1.0"
+    },
+    "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+    "X-Plasma-API": "declarativescript",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

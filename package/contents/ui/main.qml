@@ -1,0 +1,253 @@
+// MindTile: the KWin side of the layout engine. Everything that decides
+// where a window goes is in engine.js; this file wires it to KWin's
+// Workspace, the global shortcuts, the on-screen display and the saved modes.
+
+import QtQuick
+import QtCore
+import org.kde.kwin
+import "engine.js" as Engine
+
+Item {
+    id: root
+
+    property var engine: null
+
+    function list(model) {
+        var out = [];
+        for (var i = 0; i < model.length; i++) {
+            out.push(model[i]);
+        }
+        return out;
+    }
+
+    function plainRect(r) {
+        return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }
+
+    function outputNamed(name) {
+        var screens = Workspace.screens;
+        for (var i = 0; i < screens.length; i++) {
+            if (screens[i].name === name) {
+                return screens[i];
+            }
+        }
+        return Workspace.activeScreen;
+    }
+
+    Settings {
+        id: store
+        location: StandardPaths.writableLocation(StandardPaths.GenericConfigLocation) + "/mindtilerc"
+        category: "Layout"
+        property string modes: "{}"
+    }
+
+    DBusCall {
+        id: osdCall
+        service: "org.kde.plasmashell"
+        path: "/org/kde/osdService"
+        dbusInterface: "org.kde.osdService"
+        method: "showText"
+    }
+
+    // Coalesces everything that asks for a re-arrange into one pass per turn.
+    Timer {
+        id: soon
+        interval: 0
+        onTriggered: root.engine.arrange()
+    }
+
+    // Drives the columns strip while it slides.
+    Timer {
+        id: frame
+        interval: 16
+        repeat: true
+        onTriggered: root.engine.arrange()
+    }
+
+    readonly property var api: ({
+        stackingOrder: function () { return root.list(Workspace.stackingOrder); },
+        activeWindow: function () { return Workspace.activeWindow; },
+        activate: function (w) { Workspace.activeWindow = w; },
+        outputs: function () {
+            return root.list(Workspace.screens).map(function (o) {
+                return { name: o.name, geometry: root.plainRect(o.geometry) };
+            });
+        },
+        area: function (name) {
+            return root.plainRect(Workspace.clientArea(Engine.MAXIMIZE_AREA, root.outputNamed(name), Workspace.currentDesktop));
+        },
+        virtualScreen: function () { return root.plainRect(Workspace.virtualScreenGeometry); },
+        currentDesktop: function () { return String(Workspace.currentDesktop.id); },
+        currentActivity: function () { return String(Workspace.currentActivity || ""); },
+        cursor: function () { return { x: Workspace.cursorPos.x, y: Workspace.cursorPos.y }; },
+        setGeometry: function (w, r) { w.frameGeometry = Qt.rect(r.x, r.y, r.width, r.height); },
+        setMaximized: function (w, on) { w.setMaximize(on, on); },
+        osd: function (text) {
+            osdCall.arguments = ["preferences-system-windows-effect-flipswitch", text];
+            osdCall.call();
+        },
+        saveModes: function (modes) { store.modes = JSON.stringify(modes); store.sync(); },
+        schedule: function () { soon.restart(); },
+        animate: function (on) {
+            if (on && !frame.running) {
+                frame.start();
+            } else if (!on && frame.running) {
+                frame.stop();
+            }
+        },
+        now: function () { return Date.now(); },
+    })
+
+    function watch(w, existing) {
+        if (!w || !w.normalWindow) {
+            return;
+        }
+        var e = root.engine;
+        w.maximizedAboutToChange.connect(function (mode) { e.maximizing(w, mode); });
+        w.maximizedChanged.connect(e.schedule);
+        w.fullScreenChanged.connect(e.schedule);
+        w.minimizedChanged.connect(e.schedule);
+        w.desktopsChanged.connect(e.schedule);
+        w.activitiesChanged.connect(e.schedule);
+        w.outputChanged.connect(function () { e.windowOutputChanged(w); });
+        w.interactiveMoveResizeStarted.connect(function () { e.dragStarted(w, w.resize); });
+        w.interactiveMoveResizeFinished.connect(function () { e.dragFinished(w); });
+        e.windowAdded(w, existing);
+    }
+
+    function readList(key, fallback) {
+        return String(KWin.readConfig(key, fallback)).split(",").map(function (s) {
+            return s.trim();
+        }).filter(function (s) {
+            return s.length > 0;
+        });
+    }
+
+    Component.onCompleted: {
+        var modes = {};
+        try {
+            modes = JSON.parse(store.modes);
+        } catch (err) {
+            modes = {};
+        }
+        root.engine = Engine.createEngine(root.api, {
+            gap: KWin.readConfig("Gap", 8),
+            outerGap: KWin.readConfig("OuterGap", 8),
+            defaultMode: KWin.readConfig("DefaultMode", "floating"),
+            animate: KWin.readConfig("Animate", true),
+            floatingApps: root.readList("FloatingApps", ""),
+        }, modes);
+        var existing = root.list(Workspace.stackingOrder);
+        for (var i = 0; i < existing.length; i++) {
+            root.watch(existing[i], true);
+        }
+    }
+
+    Connections {
+        target: Workspace
+        function onWindowAdded(w) { root.watch(w, false); }
+        function onWindowRemoved(w) { root.engine.windowRemoved(w); }
+        function onWindowActivated(w) { root.engine.windowActivated(w); }
+        function onCurrentDesktopChanged() { root.engine.schedule(); }
+        function onCurrentActivityChanged() { root.engine.schedule(); }
+        function onScreensChanged() { root.engine.schedule(); }
+        function onVirtualScreenGeometryChanged() { root.engine.schedule(); }
+    }
+
+    ShortcutHandler {
+        name: "MindTile: Next layout"
+        text: "MindTile: Next layout (Floating, Tiles, Columns)"
+        sequence: "Meta+T"
+        onActivated: root.engine.cycleMode()
+    }
+    ShortcutHandler {
+        name: "MindTile: Floating layout"
+        text: "MindTile: Floating layout"
+        sequence: ""
+        onActivated: root.engine.setMode("floating")
+    }
+    ShortcutHandler {
+        name: "MindTile: Tiles layout"
+        text: "MindTile: Tiles layout"
+        sequence: ""
+        onActivated: root.engine.setMode("dwindle")
+    }
+    ShortcutHandler {
+        name: "MindTile: Columns layout"
+        text: "MindTile: Columns layout"
+        sequence: ""
+        onActivated: root.engine.setMode("columns")
+    }
+    ShortcutHandler {
+        name: "MindTile: Float window"
+        text: "MindTile: Float or tile the focused window"
+        sequence: "Meta+Shift+F"
+        onActivated: root.engine.toggleFloating()
+    }
+    ShortcutHandler {
+        name: "MindTile: Cycle size"
+        text: "MindTile: Step the focused window's size"
+        sequence: "Meta+R"
+        onActivated: root.engine.cycleSize()
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus left"
+        text: "MindTile: Focus the window to the left"
+        sequence: "Meta+Left"
+        onActivated: root.engine.focusDirection("left")
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus right"
+        text: "MindTile: Focus the window to the right"
+        sequence: "Meta+Right"
+        onActivated: root.engine.focusDirection("right")
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus up"
+        text: "MindTile: Focus the window above"
+        sequence: "Meta+Up"
+        onActivated: root.engine.focusDirection("up")
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus down"
+        text: "MindTile: Focus the window below"
+        sequence: "Meta+Down"
+        onActivated: root.engine.focusDirection("down")
+    }
+    ShortcutHandler {
+        name: "MindTile: Move left"
+        text: "MindTile: Move the window left"
+        sequence: "Meta+Shift+Left"
+        onActivated: root.engine.moveDirection("left")
+    }
+    ShortcutHandler {
+        name: "MindTile: Move right"
+        text: "MindTile: Move the window right"
+        sequence: "Meta+Shift+Right"
+        onActivated: root.engine.moveDirection("right")
+    }
+    ShortcutHandler {
+        name: "MindTile: Move up"
+        text: "MindTile: Move the window up"
+        sequence: "Meta+Shift+Up"
+        onActivated: root.engine.moveDirection("up")
+    }
+    ShortcutHandler {
+        name: "MindTile: Move down"
+        text: "MindTile: Move the window down"
+        sequence: "Meta+Shift+Down"
+        onActivated: root.engine.moveDirection("down")
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus next"
+        text: "MindTile: Focus the next window in the layout"
+        sequence: ""
+        onActivated: root.engine.focusStep(true)
+    }
+    ShortcutHandler {
+        name: "MindTile: Focus previous"
+        text: "MindTile: Focus the previous window in the layout"
+        sequence: ""
+        onActivated: root.engine.focusStep(false)
+    }
+}
