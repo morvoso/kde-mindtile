@@ -169,3 +169,9 @@ make dist            # build/mindtile.kwinscript for "Install from File"
 The headless sessions set `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`
 and `XDG_STATE_HOME` to `build/session`. Without that, a nested KWin writes to
 your real `kwinrc`, `kwinoutputconfig.json` and `kglobalshortcutsrc`.
+
+## License
+
+MIT. See [LICENSE](LICENSE). You can use, modify and redistribute this, but
+copies and derived work have to keep the copyright notice crediting
+Justin Bryson.
